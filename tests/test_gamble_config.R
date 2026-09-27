@@ -1,7 +1,21 @@
-# tests/test_gamble_config.R
-# Test suite for gamble_config compiler and validator
+if (requireNamespace("testthat", quietly = TRUE)) {
+  library(testthat)
+} else {
+  test_that <- function(desc, code) eval(substitute(code))
+  expect_equal <- function(a, b) stopifnot(identical(a, b))
+  expect_error <- function(code, ...) tryCatch({ eval(substitute(code)); stop("expected error") }, error = function(e) invisible(NULL))
+}
 
 source("tools/gamble_config.R")
+
+test_that("gamble_config handles pixel resolution and intersection", {
+  cfg <- gamble_config(task = "flat_design", pixel_res = 5, pixel_intersect = "native")
+  expect_equal(cfg$data$pixel_res, 5L)
+  expect_equal(cfg$data$pixel_intersect, "native")
+  env <- compile_to_env(cfg)
+  expect_equal(env[["PIXEL_RES"]], "5")
+  expect_equal(env[["PIXEL_INTERSECT"]], "native")
+})
 
 test_that("gamble_config infers architecture correctly", {
   cfg_flat <- gamble_config(task = "flat_fit")

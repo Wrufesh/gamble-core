@@ -32,6 +32,8 @@ gamble_config <- function(task = c("flat_fit", "nested", "flat_design", "report"
                           variant = c("factorized", "iv"),
                           re_block = c("intercept", "intercept+socio"),
                           use_bart = FALSE,
+                          pixel_res = 10,
+                          pixel_intersect = "NUTS3",
                           design_path = "auto",
                           subsample = "auto",
                           nsample = "auto",
@@ -101,6 +103,10 @@ gamble_config <- function(task = c("flat_fit", "nested", "flat_design", "report"
       nested = if (architecture == "nested") list(variant = variant, re_block = re_block) else NULL,
       flat = if (architecture == "flat") list(use_bart = isTRUE(use_bart)) else NULL
     ),
+    data = list(
+      pixel_res = if (identical(pixel_res, "auto")) "auto" else as.integer(pixel_res),
+      pixel_intersect = as.character(pixel_intersect)
+    ),
     sampling = list(
       subsample = if (identical(subsample, "auto")) "auto" else as.integer(subsample),
       nsample = if (identical(nsample, "auto")) "auto" else as.integer(nsample),
@@ -164,7 +170,16 @@ compile_to_env <- function(cfg) {
     env[["PROGRESS_SEC"]] <- as.character(sampling$progress_sec)
   }
 
-  # 4. System Mounts
+  # 4. Data Preparation / Resolution
+  data_opts <- cfg$data %||% list()
+  if (!is.null(data_opts$pixel_res) && !identical(data_opts$pixel_res, "auto")) {
+    env[["PIXEL_RES"]] <- as.character(data_opts$pixel_res)
+  }
+  if (!is.null(data_opts$pixel_intersect) && !identical(data_opts$pixel_intersect, "auto")) {
+    env[["PIXEL_INTERSECT"]] <- as.character(data_opts$pixel_intersect)
+  }
+
+  # 5. System Mounts
   system_opts <- cfg$system %||% list()
   env[["GAMBLE_WORK_DIR"]] <- system_opts$work_dir %||% "/mnt/wdrv/gamble-core"
 

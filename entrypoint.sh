@@ -437,8 +437,20 @@ if [ ! -f "$DESIGN_PATH" ]; then
     [ -n "$PROJECT" ] && match=$(printf '%s\n' "$cands" | grep -F "$PROJECT" | head -1 || true)
     sel="PROJECT=$PROJECT"
     if [ -z "$match" ]; then
-      match=$(printf '%s\n' "$cands" | grep -F "$CLASSIFICATION" | head -1 || true)
+      cand_matches=$(printf '%s\n' "$cands" | grep -F "$CLASSIFICATION" || true)
+      if [ -n "$cand_matches" ] && [ -n "${PIXEL_RES:-}" ]; then
+        res_match=$(printf '%s\n' "$cand_matches" | grep -E "(${PIXEL_RES}km|res_${PIXEL_RES})" || true)
+        [ -n "$res_match" ] && cand_matches="$res_match"
+      fi
+      if [ -n "$cand_matches" ] && [ -n "${PIXEL_INTERSECT:-}" ]; then
+        _piv="${PIXEL_INTERSECT}"
+        [ "$_piv" = "none" ] || [ "$_piv" = "NULL" ] && _piv="native"
+        int_match=$(printf '%s\n' "$cand_matches" | grep -F "$_piv" || true)
+        [ -n "$int_match" ] && cand_matches="$int_match"
+      fi
+      match=$(printf '%s\n' "$cand_matches" | head -1 || true)
       sel="CLASSIFICATION=$CLASSIFICATION"
+      [ -n "${PIXEL_RES:-}" ] && sel="$sel (res ${PIXEL_RES}km)"
     fi
     if [ -n "$match" ]; then
       DESIGN_PATH="$match"
@@ -659,11 +671,19 @@ case "$TASK" in
   flat_design)
     echo ">>> Task: Assembling DESIGN dump only"
     echo "    Classification: $CLASSIFICATION"
+    echo "    Resolution:     ${PIXEL_RES:-10} km"
+    echo "    Intersection:   ${PIXEL_INTERSECT:-NUTS3}"
     export DRIVER_CLASS_COLS="$CLASSIFICATION"
     export DRIVER_PROMOTE_NATURAL_OTHER="TRUE"
     export DRIVER_DUMP_INPUTS="TRUE"
     export DRIVER_DUMP_EXIT="TRUE"
-    [ -n "$DESIGN_PATH" ] && [ "$DESIGN_PATH" != "auto" ] && export DRIVER_DUMP_PATH="$DESIGN_PATH"
+    if [ -z "$DESIGN_PATH" ] || [ "$DESIGN_PATH" = "auto" ]; then
+      _piv="${PIXEL_INTERSECT:-NUTS3}"
+      [ "$_piv" = "none" ] || [ "$_piv" = "NULL" ] || [ -z "$_piv" ] && _piv="native"
+      DESIGN_PATH="output/designs/pixel_model_inputs_${CLASSIFICATION}_${PIXEL_RES:-10}km_${_piv}.rds"
+    fi
+    export DRIVER_DUMP_PATH="$DESIGN_PATH"
+    echo "    Output Path:    $DESIGN_PATH"
 
     Rscript drivers/run_lu_pixel_model.R
     ;;
