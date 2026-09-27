@@ -394,7 +394,9 @@ if (isTRUE(as.logical(Sys.getenv("DIAGNOSE", "TRUE"))) && file.exists("postproce
 if (!USE_BART && isTRUE(as.logical(Sys.getenv("REPORT", "TRUE"))) && file.exists("postprocess/model_report.R")) {
   cat(sprintf("\n%s\nGENERATING HTML MODEL REPORT\n%s\n", strrep("=", 70), strrep("=", 70)))
   tryCatch({
-    Sys.setenv(REPORT_INPUT = INPUT, REPORT_PROJECT = CLASSIFICATION)
+    proj <- Sys.getenv("CLASSIFICATION", Sys.getenv("PROJECT", basename(dirname(OUT))))
+    if (!nzchar(proj) || proj == "auto") proj <- "GLOBIOM_subclass"
+    Sys.setenv(REPORT_INPUT = INPUT, REPORT_PROJECT = proj)
     system2("Rscript", c("postprocess/model_report.R", OUT))
     rep_html <- file.path(OUT, "report.html")
     if (file.exists(rep_html)) {
