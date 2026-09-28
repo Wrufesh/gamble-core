@@ -51,8 +51,38 @@ AUXDATA_DIR  <- Sys.getenv("GAMBLE_AUXDATA_DIR",  file.path(CASCADE_DATA, "aux_f
 
 # Dynamically pick the latest mapping file
 mapping_file <- get_latest_file(AUXDATA_DIR, "^one_kmID_master_mapping_.*\\.parquet$")
-if (is.null(mapping_file)) stop("No mapping file found in ", AUXDATA_DIR)
-cat(sprintf("Using latest mapping file: %s\n", mapping_file))
+if (is.null(mapping_file)) {
+  # Search fallback candidates across common mount / data locations
+  aux_cands <- c(
+    "/data/cascadinggamble-core/data/aux_files",
+    "/data/aux_files",
+    file.path(Sys.getenv("GAMBLE_WORK_DIR", "/mnt/wdrv/gamble-core"), "cascadinggamble-core/data/aux_files"),
+    file.path(Sys.getenv("GAMBLE_WORK_DIR", "/mnt/wdrv/gamble-core"), "data/aux_files"),
+    file.path(Sys.getenv("GAMBLE_WORK_DIR", "/mnt/wdrv/gamble-core"), "aux_files"),
+    "/mnt/wdrv/cascadinggamble-core/data/aux_files",
+    "/mnt/wdrv/data/aux_files",
+    "/mnt/wdrv/aux_files",
+    "aux_files"
+  )
+  for (cand in aux_cands) {
+    if (dir.exists(cand)) {
+      mf <- get_latest_file(cand, "^one_kmID_master_mapping_.*\\.parquet$")
+      if (!is.null(mf)) {
+        AUXDATA_DIR <- cand
+        mapping_file <- mf
+        cat(sprintf(">>> Auto-detected mapping file from fallback location: %s in %s\n", mapping_file, AUXDATA_DIR))
+        break
+      }
+    }
+  }
+}
+if (is.null(mapping_file)) {
+  stop(sprintf(
+    "No mapping file ('one_kmID_master_mapping_*.parquet') found in %s or candidate data directories.\nTo assemble a design dump (TASK=flat_design), map or stage 'cascadinggamble-core/data' (e.g. into /data/cascadinggamble-core/data or /mnt/wdrv/cascadinggamble-core/data).",
+    AUXDATA_DIR
+  ))
+}
+cat(sprintf("Using latest mapping file: %s (in %s)\n", mapping_file, AUXDATA_DIR))
 
 PIXEL_RES <- as.integer(Sys.getenv("DRIVER_PIXEL_RES", "10"))  # grid resolution in km (5 or 10); EU 10km ~ 48-64k pixels, 5km ~ 180k. CANONICAL default 10.
 
@@ -560,9 +590,17 @@ cat("  Loading prior covariates...\n")
 PRIOR_1KM_PARQUET <- Sys.getenv("GAMBLE_MASTER_PARQUET", "")
 if (!nzchar(PRIOR_1KM_PARQUET)) {
   .cands <- c("../cascadinggamble-core/data/02_intermediate/prior_model_1km_master_inputs.parquet",
+              "/data/prior_model_1km_master_inputs.parquet",
+              "/data/cascadinggamble-core/data/02_intermediate/prior_model_1km_master_inputs.parquet",
+              file.path(Sys.getenv("GAMBLE_WORK_DIR", "/mnt/wdrv/gamble-core"), "prior_model_1km_master_inputs.parquet"),
+              file.path(Sys.getenv("GAMBLE_WORK_DIR", "/mnt/wdrv/gamble-core"), "data/prior_model_1km_master_inputs.parquet"),
+              file.path(Sys.getenv("GAMBLE_WORK_DIR", "/mnt/wdrv/gamble-core"), "cascadinggamble-core/data/02_intermediate/prior_model_1km_master_inputs.parquet"),
+              "/mnt/wdrv/prior_model_1km_master_inputs.parquet",
+              "/mnt/wdrv/cascadinggamble-core/data/02_intermediate/prior_model_1km_master_inputs.parquet",
+              "/Users/leopoldringwald/gamble_local_data/prior_model_1km_master_inputs.parquet",
               file.path(GRIDWORK_DIR, "prior_model_1km_master_inputs.parquet"))
   .cands <- .cands[file.exists(.cands)]
-  if (!length(.cands)) stop("master 1km parquet not found in cascadinggamble-core or ", GRIDWORK_DIR)
+  if (!length(.cands)) stop("master 1km parquet not found in cascadinggamble-core, /data, /mnt/wdrv, or ", GRIDWORK_DIR)
   PRIOR_1KM_PARQUET <- .cands[order(file.mtime(.cands), decreasing = TRUE)][1]
 }
 cat(sprintf(">>> master 1km parquet: %s  (modified %s)\n", PRIOR_1KM_PARQUET,

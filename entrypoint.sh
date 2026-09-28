@@ -409,11 +409,18 @@ warn_work_dir_mismatch() {
 }
 
 # --- Design-dump resolution -----------------------------------------------------
-# A cold container has no design: output/ ships with nothing but .gitkeep, and TASK=nested is the
-# routine's default, so the preflight fires before any work happens. If a dump is already staged on
-# the drive, use it rather than making the caller spell the path out.
-# (This was written once and lost in a merge on 2026-09-21; job 8721 failed for exactly that.)
-if [ ! -f "$DESIGN_PATH" ]; then
+# For flat_design, we are PRODUCING a design dump, not consuming an existing one.
+# For other tasks, if a dump is already staged on the drive, auto-detect it.
+if [ "$TASK" = "flat_design" ]; then
+  _piv="${PIXEL_INTERSECT:-NUTS3}"
+  [ "$_piv" = "none" ] || [ "$_piv" = "NULL" ] || [ -z "$_piv" ] && _piv="native"
+  _res="${PIXEL_RES:-10}"
+  _date=$(date -u '+%Y%m%d')
+  if [ -z "$DESIGN_PATH" ] || [ "$DESIGN_PATH" = "auto" ]; then
+    DESIGN_PATH="output/designs/pixel_model_inputs_${CLASSIFICATION}_${_res}km_${_piv}_${_date}.rds"
+    knob_update DESIGN_PATH "$DESIGN_PATH" "target output (res ${_res}km, ${_piv}, ${_date})"
+  fi
+elif [ ! -f "$DESIGN_PATH" ]; then
   # The trailing `true` is load-bearing. This script runs under `set -eo pipefail`, and without it
   # the loop's exit status is that of its last test -- `[ -d /data ]`, which is FALSE whenever /data
   # is not mounted. pipefail carries that through the pipe, the assignment fails, and the routine
@@ -434,7 +441,7 @@ if [ ! -f "$DESIGN_PATH" ]; then
     # PROJECT first, then CLASSIFICATION -- the two selectors name different axes, and a project
     # build (pixel_model_inputs_BMLEH_Los1_CAPRI.rds) does not carry a classification in its name.
     match=""
-    [ -n "$PROJECT" ] && match=$(printf '%s\n' "$cands" | grep -F "$PROJECT" | head -1 || true)
+    [ -n "$PROJECT" ] && match=$(printf '%s\n' "$cands" | grep -F "$PROJECT" | tail -1 || true)
     sel="PROJECT=$PROJECT"
     if [ -z "$match" ]; then
       cand_matches=$(printf '%s\n' "$cands" | grep -F "$CLASSIFICATION" || true)
@@ -448,9 +455,11 @@ if [ ! -f "$DESIGN_PATH" ]; then
         int_match=$(printf '%s\n' "$cand_matches" | grep -F "$_piv" || true)
         [ -n "$int_match" ] && cand_matches="$int_match"
       fi
-      match=$(printf '%s\n' "$cand_matches" | head -1 || true)
+      # Pick the newest candidate if multiple exist (sort order puts later dates last)
+      match=$(printf '%s\n' "$cand_matches" | tail -1 || true)
       sel="CLASSIFICATION=$CLASSIFICATION"
       [ -n "${PIXEL_RES:-}" ] && sel="$sel (res ${PIXEL_RES}km)"
+      [ -n "${PIXEL_INTERSECT:-}" ] && sel="$sel (intersect ${_piv})"
     fi
     if [ -n "$match" ]; then
       DESIGN_PATH="$match"
@@ -576,14 +585,42 @@ unset gv gval
 if [ -n "${GAMBLE_MASTER_PARQUET:-}" ]; then
   echo ">>> Master Parquet: $GAMBLE_MASTER_PARQUET"
   export GAMBLE_MASTER_PARQUET
-elif [ -f "/data/prior_model_1km_master_inputs.parquet" ]; then
-  echo ">>> Auto-detected Master Parquet: /data/prior_model_1km_master_inputs.parquet"
-  export GAMBLE_MASTER_PARQUET="/data/prior_model_1km_master_inputs.parquet"
+else
+  for p_cand in \
+    "/data/prior_model_1km_master_inputs.parquet" \
+    "$GAMBLE_WORK_DIR/prior_model_1km_master_inputs.parquet" \
+    "/mnt/wdrv/prior_model_1km_master_inputs.parquet" \
+    "$GAMBLE_WORK_DIR/data/prior_model_1km_master_inputs.parquet" \
+    "/mnt/wdrv/data/prior_model_1km_master_inputs.parquet" \
+    "/data/cascadinggamble-core/data/02_intermediate/prior_model_1km_master_inputs.parquet" \
+    "/mnt/wdrv/cascadinggamble-core/data/02_intermediate/prior_model_1km_master_inputs.parquet" \
+    "$GAMBLE_WORK_DIR/cascadinggamble-core/data/02_intermediate/prior_model_1km_master_inputs.parquet"; do
+    if [ -f "$p_cand" ]; then
+      echo ">>> Auto-detected Master Parquet: $p_cand"
+      export GAMBLE_MASTER_PARQUET="$p_cand"
+      break
+    fi
+  done
 fi
 
-# Cascade data resolution (/data auto-detect)
-if [ -z "${GAMBLE_CASCADE_DATA:-}" ] && [ -d "/data/cascadinggamble-core/data" ]; then
-  export GAMBLE_CASCADE_DATA="/data/cascadinggamble-core/data"
+# Cascade data resolution (/data auto-detect -> /mnt/wdrv auto-detect)
+if [ -z "${GAMBLE_CASCADE_DATA:-}" ]; then
+  for c_cand in \
+    "/data/cascadinggamble-core/data" \
+    "/data/cascadinggamble-core" \
+    "/data" \
+    "$GAMBLE_WORK_DIR/cascadinggamble-core/data" \
+    "/mnt/wdrv/cascadinggamble-core/data" \
+    "$GAMBLE_WORK_DIR/data" \
+    "/mnt/wdrv/data"; do
+    if [ -d "$c_cand/aux_files" ]; then
+      echo ">>> Auto-detected Cascade Data root: $c_cand"
+      export GAMBLE_CASCADE_DATA="$c_cand"
+      export GAMBLE_AUXDATA_DIR="$c_cand/aux_files"
+      [ -d "$c_cand/02_intermediate" ] && export GAMBLE_GRIDWORK_DIR="$c_cand/02_intermediate"
+      break
+    fi
+  done
 fi
 
 # The BMLEH project scripts ARE tracked: they were force-added in d93583e (2026-09-19) and
@@ -669,23 +706,64 @@ case "$TASK" in
     ;;
 
   flat_design)
-    echo ">>> Task: Assembling DESIGN dump only"
-    echo "    Classification: $CLASSIFICATION"
-    echo "    Resolution:     ${PIXEL_RES:-10} km"
-    echo "    Intersection:   ${PIXEL_INTERSECT:-NUTS3}"
+    _piv="${PIXEL_INTERSECT:-NUTS3}"
+    [ "$_piv" = "none" ] || [ "$_piv" = "NULL" ] || [ -z "$_piv" ] && _piv="native"
+    _res="${PIXEL_RES:-10}"
+    _date=$(date -u '+%Y%m%d')
+
+    if [ -z "$DESIGN_PATH" ] || [ "$DESIGN_PATH" = "auto" ]; then
+      DESIGN_PATH="output/designs/pixel_model_inputs_${CLASSIFICATION}_${_res}km_${_piv}_${_date}.rds"
+    fi
+    export DRIVER_DUMP_PATH="$DESIGN_PATH"
     export DRIVER_CLASS_COLS="$CLASSIFICATION"
     export DRIVER_PROMOTE_NATURAL_OTHER="TRUE"
     export DRIVER_DUMP_INPUTS="TRUE"
     export DRIVER_DUMP_EXIT="TRUE"
-    if [ -z "$DESIGN_PATH" ] || [ "$DESIGN_PATH" = "auto" ]; then
-      _piv="${PIXEL_INTERSECT:-NUTS3}"
-      [ "$_piv" = "none" ] || [ "$_piv" = "NULL" ] || [ -z "$_piv" ] && _piv="native"
-      DESIGN_PATH="output/designs/pixel_model_inputs_${CLASSIFICATION}_${PIXEL_RES:-10}km_${_piv}.rds"
-    fi
-    export DRIVER_DUMP_PATH="$DESIGN_PATH"
+    export DRIVER_PIXEL_RES="$_res"
+    export DRIVER_PIXEL_INTERSECT="${PIXEL_INTERSECT:-NUTS3}"
+
+    echo ">>> Task: Assembling DESIGN dump only"
+    echo "    Classification: $CLASSIFICATION"
+    echo "    Resolution:     $_res km"
+    echo "    Intersection:   ${PIXEL_INTERSECT:-NUTS3}"
     echo "    Output Path:    $DESIGN_PATH"
 
+    # Pre-flight check for raw mapping file:
+    _has_map=0
+    for _chk in "${GAMBLE_AUXDATA_DIR:-}" "${GAMBLE_CASCADE_DATA:-}/aux_files" "/data/cascadinggamble-core/data/aux_files" "/data/aux_files" "/mnt/wdrv/cascadinggamble-core/data/aux_files" "$GAMBLE_WORK_DIR/cascadinggamble-core/data/aux_files" "$GAMBLE_WORK_DIR/data/aux_files" "../cascadinggamble-core/data/aux_files" "aux_files"; do
+      if [ -d "$_chk" ] && [ -n "$(find "$_chk" -maxdepth 2 -name 'one_kmID_master_mapping_*.parquet' 2>/dev/null | head -1)" ]; then
+        _has_map=1
+        [ -z "${GAMBLE_AUXDATA_DIR:-}" ] && export GAMBLE_AUXDATA_DIR="$_chk"
+        break
+      fi
+    done
+
+    if [ "$_has_map" -eq 0 ]; then
+      echo "------------------------------------------------------------------"
+      echo "ERROR: Cannot assemble design dump (TASK=flat_design)."
+      echo "Missing raw cascade mapping file ('one_kmID_master_mapping_*.parquet')."
+      echo
+      echo "To assemble a design matrix from raw layers, the container needs"
+      echo "access to 'cascadinggamble-core/data'. Provide it either:"
+      echo "  1. Via wkube Input Mappings:"
+      echo "     acc://<bucket>/cascadinggamble-core/data:/data/cascadinggamble-core/data"
+      echo "     acc://<bucket>/prior_model_1km_master_inputs.parquet:/data/prior_model_1km_master_inputs.parquet"
+      echo "  2. Or by placing 'cascadinggamble-core/data' onto your mounted drive:"
+      echo "     /mnt/wdrv/cascadinggamble-core/data"
+      echo "------------------------------------------------------------------"
+      exit 1
+    fi
+
     Rscript drivers/run_lu_pixel_model.R
+
+    # Also maintain a latest alias without the date stamp for easy downstream reference
+    if [ -f "$DESIGN_PATH" ]; then
+      _alias="output/designs/pixel_model_inputs_${CLASSIFICATION}_${_res}km_${_piv}.rds"
+      if [ "$DESIGN_PATH" != "$_alias" ]; then
+        echo ">>> Linking dated design dump to un-dated alias: $_alias"
+        cp -f "$DESIGN_PATH" "$_alias" 2>/dev/null || ln -sf "$(basename "$DESIGN_PATH")" "$_alias" 2>/dev/null || true
+      fi
+    fi
     ;;
 
   flat_fit)
