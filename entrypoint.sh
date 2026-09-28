@@ -721,6 +721,12 @@ case "$TASK" in
     export DRIVER_DUMP_EXIT="TRUE"
     export DRIVER_PIXEL_RES="$_res"
     export DRIVER_PIXEL_INTERSECT="${PIXEL_INTERSECT:-NUTS3}"
+    [ -n "${MODEL_YEARS:-}" ] && export DRIVER_MODEL_YEARS="$MODEL_YEARS"
+    [ -n "${Y_LAG_YEARS:-}" ] && export DRIVER_Y_LAG_YEARS="$Y_LAG_YEARS"
+    [ -n "${Y_LAG:-}" ] && [ "$Y_LAG" != "auto" ] && export DRIVER_Y_LAG_YEARS="$Y_LAG"
+    [ -n "${FOCAL_YEARS:-}" ] && [ -z "${DRIVER_Y_LAG_YEARS:-}" ] && export DRIVER_Y_LAG_YEARS="$FOCAL_YEARS"
+    [ -n "${COV_YEARS:-}" ] && export DRIVER_COV_YEARS="$COV_YEARS"
+    [ -n "${CROP_SPLIT:-}" ] && export DRIVER_CROP_SPLIT="$CROP_SPLIT"
 
     echo ">>> Task: Assembling DESIGN dump only"
     echo "    Classification: $CLASSIFICATION"
@@ -785,6 +791,12 @@ case "$TASK" in
       export DRIVER_DUMP_INPUTS="TRUE"
       export DRIVER_DUMP_EXIT="TRUE"
       export DRIVER_DUMP_PATH="$DESIGN_PATH"
+      [ -n "${MODEL_YEARS:-}" ] && export DRIVER_MODEL_YEARS="$MODEL_YEARS"
+      [ -n "${Y_LAG_YEARS:-}" ] && export DRIVER_Y_LAG_YEARS="$Y_LAG_YEARS"
+      [ -n "${Y_LAG:-}" ] && [ "$Y_LAG" != "auto" ] && export DRIVER_Y_LAG_YEARS="$Y_LAG"
+      [ -n "${FOCAL_YEARS:-}" ] && [ -z "${DRIVER_Y_LAG_YEARS:-}" ] && export DRIVER_Y_LAG_YEARS="$FOCAL_YEARS"
+      [ -n "${COV_YEARS:-}" ] && export DRIVER_COV_YEARS="$COV_YEARS"
+      [ -n "${CROP_SPLIT:-}" ] && export DRIVER_CROP_SPLIT="$CROP_SPLIT"
       Rscript drivers/run_lu_pixel_model.R
     fi
 

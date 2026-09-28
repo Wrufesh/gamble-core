@@ -30,8 +30,9 @@ REBUILD_DESIGN    <- FALSE  # When FALSE and fitting: reuse existing design dump
 DESIGN_PATH       <- "output/designs/pixel_model_inputs.rds" # path to design dump
 
 PROMOTE_NATURAL_OTHER <- TRUE   # move Natural_other out of the non-choosable residual
-MODEL_YEARS  <- "2018"      # target year(s) of the land-use map
-FOCAL_YEARS  <- "2010"      # year the focal (neighbourhood composition) covariate is taken from
+MODEL_YEARS  <- "2018"      # target year(s) of the land-use map (outcome Y)
+Y_LAG_YEARS  <- "2010"      # predecessor year(s) for the autoregressive lag (prev_* and focal_* spatial context)
+FOCAL_YEARS  <- Y_LAG_YEARS # backwards-compatible alias
 COV_YEARS    <- "2020"      # exogenous covariate year (spei48_2018 is renamed _2020 upstream)
 MASTER_PARQUET <- "/Users/leopoldringwald/gamble_local_data/prior_model_1km_master_inputs.parquet"
   # Local copy of the 1 km covariate parquet. Set to "" to use the newest copy the driver resolves.
@@ -60,11 +61,13 @@ if (!isTRUE(BUILD_DESIGN_ONLY) && NBURN >= NITER)
 need_build <- isTRUE(BUILD_DESIGN_ONLY) || isTRUE(REBUILD_DESIGN) || !file.exists(DESIGN_PATH)
 
 if (need_build) {
-  message(sprintf(">>> Assembling DESIGN dump: classification=%s | years %s (focal %s, cov %s)",
-                  CLASSIFICATION, MODEL_YEARS, FOCAL_YEARS, COV_YEARS))
+  message(sprintf(">>> Assembling DESIGN dump: classification=%s | years %s (Y_lag %s, cov %s)",
+                  CLASSIFICATION, MODEL_YEARS, Y_LAG_YEARS, COV_YEARS))
   vars <- c(DRIVER_CLASS_COLS = CLASSIFICATION,
             DRIVER_PROMOTE_NATURAL_OTHER = if (isTRUE(PROMOTE_NATURAL_OTHER)) "TRUE" else "FALSE",
-            DRIVER_MODEL_YEARS = MODEL_YEARS, DRIVER_FOCAL_YEARS = FOCAL_YEARS,
+            DRIVER_MODEL_YEARS = MODEL_YEARS,
+            DRIVER_Y_LAG_YEARS = Y_LAG_YEARS,
+            DRIVER_FOCAL_YEARS = Y_LAG_YEARS,
             DRIVER_COV_YEARS = COV_YEARS,
             DRIVER_DUMP_INPUTS = "TRUE",
             DRIVER_DUMP_EXIT = "TRUE",

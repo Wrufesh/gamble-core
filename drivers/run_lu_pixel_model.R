@@ -176,58 +176,21 @@ LEVEL_SCALE_FACTOR <- 1 # e.g., 1 for km2, 100 for ha (if input is km2)
 
 # --- Year Configuration ---
 # Panel tiers. MODEL_YEARS = the OUTCOME (Y) year per tier; COV_YEARS = the matching
-# exogenous-covariate year; FOCAL_YEARS = the composition-source year for the focal (X_input)
-# lag (see below). All three run PARALLEL (one entry per tier) and are env-overridable, so the
-# Y years can be chosen without editing the file, e.g. for the GLOBIOM 2010+2018 panel:
-#   DRIVER_MODEL_YEARS=2010,2018  DRIVER_COV_YEARS=2010,2020  DRIVER_FOCAL_YEARS=2000,2010
-# Default here = the single BIOCLIMA 2018 tier with a 2010 (t-1) focal lag.
+# exogenous-covariate year; Y_LAG_YEARS = the predecessor/lag year for the autoregressive
+# (prev_* own-state and focal_* spatial neighborhood) predictors. All three run PARALLEL
+# (one entry per tier) and are env-overridable, so the Y years can be chosen without editing
+# the file, e.g. for the GLOBIOM 2010+2018 panel:
+#   DRIVER_MODEL_YEARS=2010,2018  DRIVER_COV_YEARS=2010,2020  DRIVER_Y_LAG_YEARS=2000,2010
+# Default here = the single BIOCLIMA 2018 tier with a 2010 (t-1) lag.
 .years_env <- function(var, default_vec) {
-  v <- Sys.getenv(var, "")
-  if (!nzchar(v)) return(default_vec)
-  as.integer(trimws(strsplit(v, ",")[[1]]))
+  for (v_name in var) {
+    v <- Sys.getenv(v_name, "")
+    if (nzchar(v)) return(as.integer(trimws(strsplit(v, ",")[[1]])))
+  }
+  return(default_vec)
 }
-MODEL_YEARS <- .years_env("DRIVER_MODEL_YEARS", c(2018))
-COV_YEARS   <- .years_env("DRIVER_COV_YEARS",   c(2020))  # spei48_2018 is renamed to _2020 upstream
-
-# --- Focal (X_input) lag configuration -------------------------------------
-# The focal neighborhood LU-composition (the `focal_*` autoregressive "LU-lag" predictors,
-# i.e. the model's X_input) can be drawn from an EARLIER year than the outcome, giving a
-# true t-1 autoregressive lag instead of the contemporaneous (endogenous) same-year map.
-# FOCAL_YEARS[i] is the composition-source year for tier i's focal input. Set it == MODEL_YEARS[i]
-# (or NA) for legacy contemporaneous behavior. Any lagged year must be in LUM_SOURCE_REGISTRY.
-# NOTE: the AGMIP scheme overrides this default to CONTEMPORANEOUS (focal_year = out_year) below,
-# unless DRIVER_FOCAL_YEARS was set explicitly — HRL crop types exist only for 2018, so a lag focal
-# would carry no crop-type classes (it would fall back to generic Cropland_*_other).
-# --- OWN t-1 STATE (`prev_*`) ------------------------------------------------
-# DRIVER_PREV_STATE=TRUE additionally emits the pixel's OWN composition at focal_year as `prev_<class>`
-# share columns. The focal is a NEIGHBOURHOOD statistic (compute_focal_coord excludes the centre), so
-# the pixel's own predecessor state is NOT otherwise in the design. It is the transition-agnostic
-# ("net") half of the transition ladder: with a shared coefficient it is scalar inertia, per-class it
-# is per-class inertia. Route it into a conditional-logit block via
-# NCUT_ALT_BLOCKS="temporal:prev_:shared" -- the share of class j at t-1 is an attribute OF
-# alternative j, not of the pixel.
-# HARD ERROR if the focal year equals the outcome year: `prev_*` would then BE the outcome and the fit
-# is circular. Not a warning, because AGMIP deliberately defaults to a contemporaneous focal (HRL crop
-# types exist only for 2018), so the unsafe case is the DEFAULT on that branch.
-PREV_STATE <- isTRUE(as.logical(Sys.getenv("DRIVER_PREV_STATE", "FALSE")))
-.focal_years_explicit <- nzchar(Sys.getenv("DRIVER_FOCAL_YEARS", ""))
-FOCAL_YEARS <- .years_env("DRIVER_FOCAL_YEARS", c(2010))
-if (length(FOCAL_YEARS) != length(MODEL_YEARS) || length(COV_YEARS) != length(MODEL_YEARS)) {
-  stop("MODEL_YEARS, COV_YEARS and FOCAL_YEARS must all have the same length (one entry per tier).")
-}
-# NOTE: LUM_SOURCE_REGISTRY (the per-year granular-LUM source files) is lineage-aware and is
-# defined below, once CLASS_SCHEME is known (BIOCLIMA vs GLOBIOM data lineages).
-
-# --- Source Functions ---
-source("codes/mnl_aux_func.R")
-source("postprocess/MNL_parameter_heatplot.R")
-source("codes/mnlogit_rcpp.R")
-source("codes/spatial_utils.R")
-
-# =========================================================================
-# 2. SHARED DATA: CLASS MAPPING
-# =========================================================================
-cat("\nLoading Class Mapping...\n")
+MODEL_YEARS <- .years_env(c("DRIVER_MODEL_YEARS", "MODEL_YEARS"), c(2018))
+COV_YEARS   <- .years_env(c("DRIVER_COV_YEARS", "COV_YEARS"),   c(2020))  # spei48_2018 is renamed to _2020 upstream
 
 # ---- Classification configuration (single source of truth) ----------------
 # Edit these to reshape the outcome classes; the map->aggregate step adapts.
@@ -242,26 +205,67 @@ CLASS_COLS <-  strsplit(Sys.getenv("DRIVER_CLASS_COLS", "AgMIP_label"), ",")[[1]
 # different target classifications never collide. MODEL_LABEL isn't used before here.
 CLASS_SCHEME <- toupper(sub("[0-9]+$", "", sub("_.*$", "", CLASS_COLS[1])))
 MODEL_LABEL <- paste0(MODEL_LABEL, "_", CLASS_SCHEME, "_", RUN_MODE)
-# AGMIP focal default = CONTEMPORANEOUS (focal_year = out_year). The HRL crop types only exist for
-# 2018, so a t-1 lag focal would carry no crop-type classes; a same-year focal keeps the focal_*
-# neighborhood composition crop-typed and consistent with the outcome. Honoured unless the user set
-# DRIVER_FOCAL_YEARS explicitly (then their choice stands, e.g. a deliberate generic-cropland lag).
-# BMLEH is in the same position as AGMIP and for the same reason -- it is crop-typed from the same
-# 2018-only HRL product -- so it must take the same default. Left out, it fell to the 2010 lag and
-# silently lost every crop focal column: focal_softwheat, focal_barley, focal_maize and the rest
-# vanished while the residual-derived ones (focal_tobacco, focal_other_crop) survived, because only
-# the generic cropland reached the cascade. In the AgMIP fit focal_softwheat was among the strongest
-# predictors in the model (RMS 1.84).
-if (CLASS_SCHEME %in% c("AGMIP", "BMLEH") && !.focal_years_explicit) {
-  FOCAL_YEARS <- MODEL_YEARS
-  cat(sprintf(">>> %s: focal defaulted to CONTEMPORANEOUS (focal_year = out_year); set DRIVER_FOCAL_YEARS to override.\n", CLASS_SCHEME))
+
+# --- Crop-type split switch (resolved early for lag defaulting) ------------
+# When on, load_granular_lum splits the LUM arable/permanent cropland AREA into specific crop-type
+# classes (wheat, maize, grapes, ...) using the Copernicus HRL Crop Types product (per-1km crop
+# composition), area-conserving to LUM.
+DO_CROP_SPLIT <- as.logical(Sys.getenv("DRIVER_CROP_SPLIT", if (CLASS_SCHEME %in% c("AGMIP", "BMLEH")) "TRUE" else "FALSE"))
+
+# --- Predecessor / Y_lag (X_input) lag configuration -------------------------------------
+# The predecessor land-use composition (the `focal_*` spatial neighborhood composition and
+# the optional `prev_*` own-pixel predecessor state, i.e. the model's autoregressive X_input)
+# can be drawn from an EARLIER year than the outcome, giving a true t-1 autoregressive lag
+# instead of the contemporaneous (endogenous) same-year map.
+# Y_LAG_YEARS[i] is the predecessor composition-source year for tier i's lag inputs.
+# Set it == MODEL_YEARS[i] (or NA) for contemporaneous behavior.
+# Any lagged year must be in LUM_SOURCE_REGISTRY.
+#
+# When crop splitting is active (DO_CROP_SPLIT=TRUE, e.g. AGMIP / BMLEH with HRL crop types),
+# HRL crop types only exist for 2018. A lagged predecessor state would lack crop-type classes
+# (falling back to generic Cropland_*_other residuals). Thus, with crop splitting, Y_lag
+# defaults to CONTEMPORANEOUS unless explicitly requested via DRIVER_Y_LAG_YEARS.
+# When NOT doing crop split shenanigans (DO_CROP_SPLIT=FALSE, e.g. GLOBIOM, or DRIVER_CROP_SPLIT=FALSE),
+# full granular LUM data exists across all registered years (2000, 2010, 2018) without any
+# missing crop types, so the lag is unconstrained and defaults to the canonical t-1 lag.
+.y_lag_env_vars <- c("DRIVER_Y_LAG_YEARS", "DRIVER_LAG_YEARS", "Y_LAG_YEARS", "Y_LAG", "DRIVER_FOCAL_YEARS", "FOCAL_YEARS")
+.y_lag_years_explicit <- any(nzchar(Sys.getenv(.y_lag_env_vars, "")))
+
+if (.y_lag_years_explicit) {
+  Y_LAG_YEARS <- .years_env(.y_lag_env_vars, c(2010))
+} else if (isTRUE(DO_CROP_SPLIT)) {
+  Y_LAG_YEARS <- MODEL_YEARS
+  cat(sprintf(">>> %s (crop split active): Y_lag defaulted to CONTEMPORANEOUS (%s) because HRL crop types exist only for 2018; set DRIVER_Y_LAG_YEARS to override.\n",
+              CLASS_SCHEME, paste(Y_LAG_YEARS, collapse = ",")))
+} else {
+  # Unconstrained by crop types: default to canonical predecessor year (2018 -> 2010, 2010 -> 2000, etc.)
+  Y_LAG_YEARS <- as.integer(vapply(MODEL_YEARS, function(y) {
+    if (y == 2018L) 2010L else if (y == 2010L) 2000L else max(y - 10L, 0L)
+  }, integer(1)))
 }
-# Tag MODEL_LABEL with the focal (X_input) lag when any tier uses an EARLIER composition
+FOCAL_YEARS <- Y_LAG_YEARS  # backwards compatibility alias
+if (length(Y_LAG_YEARS) != length(MODEL_YEARS) || length(COV_YEARS) != length(MODEL_YEARS)) {
+  stop("MODEL_YEARS, COV_YEARS and Y_LAG_YEARS must all have the same length (one entry per tier).")
+}
+
+# --- OWN t-1 STATE (`prev_*`) ------------------------------------------------
+# DRIVER_PREV_STATE=TRUE additionally emits the pixel's OWN composition at Y_lag year as `prev_<class>`
+# share columns. The focal is a NEIGHBOURHOOD statistic (compute_focal_coord excludes the centre), so
+# the pixel's own predecessor state is NOT otherwise in the design. It is the transition-agnostic
+# ("net") half of the transition ladder: with a shared coefficient it is scalar inertia, per-class it
+# is per-class inertia. Route it into a conditional-logit block via
+# NCUT_ALT_BLOCKS="temporal:prev_:shared" -- the share of class j at t-1 is an attribute OF
+# alternative j, not of the pixel.
+# HARD ERROR if the Y_lag year equals the outcome year: `prev_*` would then BE the outcome and the fit
+# is circular.
+PREV_STATE <- isTRUE(as.logical(Sys.getenv("DRIVER_PREV_STATE", "FALSE")))
+
+# Tag MODEL_LABEL with the Y_lag when any tier uses an EARLIER composition
 # year than its outcome, so lagged artifacts never collide with contemporaneous ones. Gap
-# is the max out_year - focal_year across lagged tiers (e.g. 2018 outcome, 2010 focal -> _focalLag8y).
-.focal_lag_gaps <- mapply(function(oy, fy) if (!is.na(oy) && !is.na(fy) && fy != oy) oy - fy else 0L,
-                          MODEL_YEARS, FOCAL_YEARS)
-if (any(.focal_lag_gaps != 0L)) MODEL_LABEL <- paste0(MODEL_LABEL, "_focalLag", max(.focal_lag_gaps), "y")
+# is the max out_year - y_lag_year across lagged tiers (e.g. 2018 outcome, 2010 Y_lag -> _Ylag8y).
+.lag_gaps <- mapply(function(oy, ly) if (!is.na(oy) && !is.na(ly) && ly != oy) oy - ly else 0L,
+                    MODEL_YEARS, Y_LAG_YEARS)
+if (any(.lag_gaps != 0L)) MODEL_LABEL <- paste0(MODEL_LABEL, "_Ylag", max(.lag_gaps), "y")
 
 # --- Granular LUM source registry (lineage-aware; single source of truth per year) ---------
 # Maps a year -> the granular 1km LUM file + id/code column names, used by BOTH the outcome
@@ -305,7 +309,7 @@ cat(sprintf("LUM data lineage: %s  (registered years: %s)\n", LUM_DATA_LINEAGE, 
 # BMLEH is crop-typed from the same HRL product, so it defaults on too. It was relying on the caller
 # passing DRIVER_CROP_SPLIT=TRUE; forgetting that would have produced a design with no crop classes
 # at all and no error -- the same silent-degradation shape as the focal-year default.
-DO_CROP_SPLIT <- as.logical(Sys.getenv("DRIVER_CROP_SPLIT", if (CLASS_SCHEME %in% c("AGMIP", "BMLEH")) "TRUE" else "FALSE"))
+# (DO_CROP_SPLIT is initialized above to determine Y_lag default)
 # HRL Crop Types source per year (same 1km key as LUM). HRL is a 2017-2019 average -> maps to 2018.
 # YEAR-MATCHED by default, not the 2017-2019 average. The average is exactly sum/3 with an unmapped
 # year counted as ZERO, and HRL's coverage varies enormously by year: BE/IE/LU/NL/CH appear only in
@@ -343,17 +347,23 @@ INCLUDE_IRRIGATION <- as.logical(Sys.getenv("DRIVER_INCLUDE_IRRIGATION", "FALSE"
 # HIO/LIO/IRO/O, so the carve-out yields e.g. Cropland_HIO), FALSE for BIOCLIMA (BIOCLIMA_DS_intermediate
 # is blank on organic rows -> carve-out would halt). Always env-overridable.
 INCLUDE_ORGANIC <- as.logical(Sys.getenv("DRIVER_INCLUDE_ORGANIC", if (CLASS_SCHEME == "GLOBIOM") "TRUE" else "FALSE"))
-# Every setting whose DEFAULT depends on CLASS_SCHEME, printed together. Adding a scheme means taking
-# a position on each of these, and three of them were missed for BMLEH in a single day -- the LUM
-# lineage (errored loudly), the crop split (caller happened to set it), and the focal year (produced a
-# plausible design with 26 focal columns instead of 44 and no error at all). Latent defaults are the
-# problem; showing them is the cheapest fix.
-.scheme_report <- function() cat(sprintf(
-  "\nSCHEME-SENSITIVE DEFAULTS for CLASS_SCHEME=%s\n  LUM lineage   %s\n  crop split    %s\n  focal years   %s%s\n  organic       %s\n  baseline      %s\n  no_choice     %s\n\n",
-  CLASS_SCHEME, LUM_DATA_LINEAGE, DO_CROP_SPLIT,
-  paste(FOCAL_YEARS, collapse = ","),
-  if (all(FOCAL_YEARS == MODEL_YEARS)) " (contemporaneous)" else " (LAGGED -- crop types exist only for 2018)",
-  INCLUDE_ORGANIC, BASELINE_CLASS, paste(NO_CHOICE_LU, collapse = ", ")))
+# Every setting whose DEFAULT depends on CLASS_SCHEME, printed together.
+.scheme_report <- function() {
+  lag_desc <- if (all(Y_LAG_YEARS == MODEL_YEARS)) {
+    " (contemporaneous)"
+  } else if (isTRUE(DO_CROP_SPLIT)) {
+    " (LAGGED -- note: HRL crop types exist only for 2018, non-2018 cropland kept as generic residual)"
+  } else {
+    sprintf(" (LAGGED: %s -> %s, unconstrained by crop types)", paste(Y_LAG_YEARS, collapse = ","), paste(MODEL_YEARS, collapse = ","))
+  }
+  cat(sprintf(
+    "\nSCHEME-SENSITIVE DEFAULTS for CLASS_SCHEME=%s\n  LUM lineage   %s\n  crop split    %s\n  Y_lag years   %s%s\n  organic       %s\n  baseline      %s\n  no_choice     %s\n\n",
+    CLASS_SCHEME, LUM_DATA_LINEAGE, DO_CROP_SPLIT,
+    paste(Y_LAG_YEARS, collapse = ","),
+    lag_desc,
+    INCLUDE_ORGANIC, BASELINE_CLASS, paste(NO_CHOICE_LU, collapse = ", ")
+  ))
+}
 # Historical organic-area assumption (ported from run_prior_module_count_model.R): the organic master
 # map is a single ~present-day layer applied to every year, so it overstates historical organic area.
 # Downweight the organic FRACTION by the EU organic-share ratio vs the master's reference year; the
@@ -1001,14 +1011,14 @@ load_granular_lum <- function(year) {
 
 cat(paste0("\nBuilding ", PIXEL_RES, "km Level Model Panel...\n"))
 T_PAIRS <- lapply(seq_along(MODEL_YEARS), function(i) {
-  list(out_year = MODEL_YEARS[i], cov_year = COV_YEARS[i], focal_year = FOCAL_YEARS[i])
+  list(out_year = MODEL_YEARS[i], cov_year = COV_YEARS[i], y_lag_year = Y_LAG_YEARS[i], focal_year = Y_LAG_YEARS[i])
 })
 
 dat_pixel_list <- lapply(T_PAIRS, function(tp) {
-  .fy <- if (is.na(tp$focal_year)) tp$out_year else tp$focal_year
-  cat(sprintf("  Processing Tier: Outcome = %s | Covariates = %s | Focal%s = %s\n",
+  .ly <- if (is.na(tp$y_lag_year)) tp$out_year else tp$y_lag_year
+  cat(sprintf("  Processing Tier: Outcome (Y) = %s | Covariates = %s | Y_lag%s = %s\n",
     tp$out_year, tp$cov_year,
-    if (!is.na(tp$out_year) && !is.na(.fy) && .fy != tp$out_year) "(t-1 lag)" else "", .fy))
+    if (!is.na(tp$out_year) && !is.na(.ly) && .ly != tp$out_year) " (t-1 lag)" else "", .ly))
 
   # 1. OUTCOME (Y)
   temp_y_pixel_yr_wide <- NULL
@@ -1309,19 +1319,21 @@ dat_pixel_list <- lapply(T_PAIRS, function(tp) {
   # Re-order and clean
   setcolorder(temp_x_pixel_yr_cont, c("ID", "Grouping_Key", cont_vars))
 
-  # 3. FOCAL (X_input neighborhood shares) -- sourced from the focal_year composition.
-  #    focal_year == out_year (or NA) => contemporaneous same-year map (legacy behavior);
-  #    focal_year < out_year => TRUE t-1 autoregressive lag: the neighborhood LU-composition
-  #    predictors are the pixel's PREDECESSOR state, loaded from the registered earlier-year map.
+  # 3. Y_lag predictors (X_input neighborhood composition `focal_*` and own predecessor state `prev_*`)
+  #    sourced from the y_lag_year composition.
+  #    y_lag_year == out_year (or NA) => contemporaneous same-year map;
+  #    y_lag_year < out_year => TRUE t-1 autoregressive lag: the predecessor LU-composition
+  #    predictors are loaded from the registered earlier-year map.
   coords_pixel <- unique(grid_map_pixel[, .(ID, X, Y, Grouping_Key)])
-  focal_year <- if (is.na(tp$focal_year)) tp$out_year else tp$focal_year
-  is_lagged_focal <- !is.na(focal_year) && !is.na(tp$out_year) && focal_year != tp$out_year
+  y_lag_year <- if (is.na(tp$y_lag_year)) tp$out_year else tp$y_lag_year
+  focal_year <- y_lag_year
+  is_lagged <- !is.na(y_lag_year) && !is.na(tp$out_year) && y_lag_year != tp$out_year
 
-  if (is_lagged_focal) {
-    cat(sprintf("  Calculating LAGGED focal context (X_input) from %s composition (outcome %s)...\n", focal_year, tp$out_year))
-    focal_compiled_long <- load_granular_lum(focal_year)
+  if (is_lagged) {
+    cat(sprintf("  Calculating LAGGED context (X_input) from Y_lag %s composition (outcome %s)...\n", y_lag_year, tp$out_year))
+    focal_compiled_long <- load_granular_lum(y_lag_year)
   } else if (exists("temp_compiled_long")) {
-    cat("  Calculating focal context from granular thematic map...\n")
+    cat("  Calculating spatial context from granular thematic map...\n")
     focal_compiled_long <- temp_compiled_long
   } else {
     focal_compiled_long <- NULL
@@ -1351,20 +1363,20 @@ dat_pixel_list <- lapply(T_PAIRS, function(tp) {
     lapply(.SD, function(x) ifelse(rs > 0, x / rs, 0))
   }, .SDcols = fcl_classes]
 
-  # OWN t-1 STATE: temp_fcl_input_granular currently holds the PIXEL'S OWN shares at focal_year --
+  # OWN t-1 STATE: temp_fcl_input_granular currently holds the PIXEL'S OWN shares at y_lag_year --
   # the last point before compute_focal_coord spreads them over the neighbourhood. Snapshot, do not
   # recompute.
   prev_state_tier <- NULL
   if (PREV_STATE) {
-    if (is.na(tp$focal_year) || is.na(tp$out_year) || tp$focal_year == tp$out_year)
-      stop(sprintf(paste0("DRIVER_PREV_STATE=TRUE requires a LAGGED focal (focal_year < out_year); ",
-                          "got focal_year=%s, out_year=%s. With a contemporaneous focal the `prev_*` ",
-                          "columns ARE the outcome and the model is circular. Set DRIVER_FOCAL_YEARS ",
-                          "earlier than DRIVER_MODEL_YEARS."), tp$focal_year, tp$out_year))
+    if (is.na(tp$y_lag_year) || is.na(tp$out_year) || tp$y_lag_year == tp$out_year)
+      stop(sprintf(paste0("DRIVER_PREV_STATE=TRUE requires a LAGGED predecessor state (Y_lag < outcome); ",
+                          "got Y_lag=%s, outcome=%s. With a contemporaneous Y_lag the `prev_*` ",
+                          "columns ARE the outcome and the model is circular. Set DRIVER_Y_LAG_YEARS ",
+                          "earlier than DRIVER_MODEL_YEARS."), tp$y_lag_year, tp$out_year))
     prev_state_tier <- copy(temp_fcl_input_granular[, c("ID", "Grouping_Key", fcl_classes), with = FALSE])
     setnames(prev_state_tier, fcl_classes, paste0("prev_", fcl_classes))
-    cat(sprintf("  OWN t-1 STATE: %d prev_* share column(s) from %s composition (outcome %s)\n",
-                length(fcl_classes), focal_year, tp$out_year))
+    cat(sprintf("  OWN t-1 STATE: %d prev_* share column(s) from Y_lag %s composition (outcome %s)\n",
+                length(fcl_classes), y_lag_year, tp$out_year))
   }
 
   # Diagnostic: Check for NA coordinates (common cause of row loss in focal_df)

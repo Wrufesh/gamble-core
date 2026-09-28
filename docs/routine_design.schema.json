@@ -51,6 +51,12 @@
           "NULL"
         ]
       },
+      "Y_LAG": {
+        "type": "string",
+        "title": "Y_lag predecessor year [model spec]  [flat]",
+        "description": "Y_lag predecessor year [model spec]  [flat] -- Predecessor year for the autoregressive LU-lag predictors (e.g. 2010 for a 2018 outcome, or 2000 for 2010). 'auto' resolves to the canonical predecessor (t-1 lag) when unconstrained, or contemporaneous if crop splitting is active.  CHANGES WHAT IS ESTIMATED -- runs differing here are not comparable with runs at the default.",
+        "default": "auto"
+      },
       "DESIGN_PATH": {
         "type": "string",
         "title": "Design dump path  [flat, gate, nested, project, recover]",

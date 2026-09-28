@@ -403,6 +403,19 @@
       "label": "Cell intersection"
     },
     {
+      "name": "Y_LAG",
+      "env": "DRIVER_Y_LAG_YEARS",
+      "type": "string",
+      "default": "auto",
+      "blank": "auto",
+      "scope": "model",
+      "label": "Y_lag predecessor year",
+      "desc": "Predecessor year for the autoregressive LU-lag predictors (e.g. 2010 for a 2018 outcome, or 2000 for 2010). 'auto' resolves to the canonical predecessor (t-1 lag) when unconstrained, or contemporaneous if crop splitting is active.",
+      "tasks": [
+        "flat"
+      ]
+    },
+    {
       "name": "BATCH_DIR",
       "env": "GAMBLE_BATCH_DIR",
       "type": "string",

@@ -34,6 +34,7 @@ gamble_config <- function(task = c("flat_fit", "nested", "flat_design", "report"
                           use_bart = FALSE,
                           pixel_res = 10,
                           pixel_intersect = "NUTS3",
+                          y_lag = "auto",
                           design_path = "auto",
                           subsample = "auto",
                           nsample = "auto",
@@ -105,7 +106,8 @@ gamble_config <- function(task = c("flat_fit", "nested", "flat_design", "report"
     ),
     data = list(
       pixel_res = if (identical(pixel_res, "auto")) "auto" else as.integer(pixel_res),
-      pixel_intersect = as.character(pixel_intersect)
+      pixel_intersect = as.character(pixel_intersect),
+      y_lag = as.character(y_lag)
     ),
     sampling = list(
       subsample = if (identical(subsample, "auto")) "auto" else as.integer(subsample),
@@ -177,6 +179,9 @@ compile_to_env <- function(cfg) {
   }
   if (!is.null(data_opts$pixel_intersect) && !identical(data_opts$pixel_intersect, "auto")) {
     env[["PIXEL_INTERSECT"]] <- as.character(data_opts$pixel_intersect)
+  }
+  if (!is.null(data_opts$y_lag) && !identical(data_opts$y_lag, "auto")) {
+    env[["Y_LAG"]] <- as.character(data_opts$y_lag)
   }
 
   # 5. System Mounts

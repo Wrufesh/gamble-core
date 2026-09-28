@@ -8,13 +8,15 @@ if (requireNamespace("testthat", quietly = TRUE)) {
 
 source("tools/gamble_config.R")
 
-test_that("gamble_config handles pixel resolution and intersection", {
-  cfg <- gamble_config(task = "flat_design", pixel_res = 5, pixel_intersect = "native")
+test_that("gamble_config handles pixel resolution, intersection, and y_lag", {
+  cfg <- gamble_config(task = "flat_design", pixel_res = 5, pixel_intersect = "native", y_lag = 2010)
   expect_equal(cfg$data$pixel_res, 5L)
   expect_equal(cfg$data$pixel_intersect, "native")
+  expect_equal(cfg$data$y_lag, "2010")
   env <- compile_to_env(cfg)
   expect_equal(env[["PIXEL_RES"]], "5")
   expect_equal(env[["PIXEL_INTERSECT"]], "native")
+  expect_equal(env[["Y_LAG"]], "2010")
 })
 
 test_that("gamble_config infers architecture correctly", {
