@@ -155,6 +155,35 @@ full = json.loads(json.dumps(schema))
 full["root"]["properties"] = props
 full["root"]["description"] += "  FULL variant: every knob. The lean one is usually what you want."
 (ROOT / "docs/routine_config.schema.full.json").write_text(json.dumps(full, indent=2) + "\n")
-print("lean: %d fields | full: %d fields" % (len(lean_props), len(props)))
-print("wrote config/knobs.generated.sh (%d knobs) and docs/routine_config.schema.json (%d fields, %d tasks)"
-      % (len(knobs), len(props), len(props["TASK"]["enum"])))
+
+# Dedicated design assembly routine schema
+DESIGN_FIELDS = [
+    "TASK",
+    "CLASSIFICATION",
+    "PIXEL_RES",
+    "PIXEL_INTERSECT",
+    "DESIGN_PATH",
+    "GAMBLE_WORK_DIR",
+    "EXTRA",
+]
+design_props = {}
+for k in DESIGN_FIELDS:
+    if k in props:
+        p_copy = dict(props[k])
+        if k == "TASK":
+            p_copy["default"] = "flat_design"
+            p_copy["enum"] = ["flat_design"]
+        elif k == "GAMBLE_WORK_DIR":
+            p_copy["default"] = "/mnt/wdrv/gamble-core"
+        design_props[k] = p_copy
+
+design_schema = {"root": {"type": "object",
+                          "title": "gamble-core design matrix routine configuration",
+                          "description": "GENERATED from config/knobs.json by tools/gen_config.py. Dedicated routine schema for assembling pixel model design dumps (TASK=flat_design).",
+                          "required": ["TASK"],
+                          "properties": design_props}}
+(ROOT / "docs/routine_design.schema.json").write_text(json.dumps(design_schema, indent=2) + "\n")
+
+print("lean: %d fields | full: %d fields | design: %d fields" % (len(lean_props), len(props), len(design_props)))
+print("wrote config/knobs.generated.sh, docs/routine_config.schema.json, and docs/routine_design.schema.json")
+

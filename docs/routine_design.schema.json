@@ -1,0 +1,74 @@
+{
+  "root": {
+    "type": "object",
+    "title": "gamble-core design matrix routine configuration",
+    "description": "GENERATED from config/knobs.json by tools/gen_config.py. Dedicated routine schema for assembling pixel model design dumps (TASK=flat_design).",
+    "required": [
+      "TASK"
+    ],
+    "properties": {
+      "TASK": {
+        "type": "string",
+        "title": "Workflow / Task",
+        "description": "Workflow / Task -- Which workflow to run. A default set here is NOT enough: the platform must pass the value into the container, as a command argument or in the environment. The run log names the source it arrived from.",
+        "default": "flat_design",
+        "enum": [
+          "flat_design"
+        ]
+      },
+      "CLASSIFICATION": {
+        "type": "string",
+        "title": "Classification [model spec]  [flat, nested]",
+        "description": "Classification [model spec]  [flat, nested] -- Class column(s) the model predicts -- decides what the outcome IS.  CHANGES WHAT IS ESTIMATED -- runs differing here are not comparable with runs at the default.",
+        "default": "GLOBIOM_subclass",
+        "enum": [
+          "GLOBIOM_subclass",
+          "GLOBIOM_UNFCCC,GLOBIOM_mngmt",
+          "AgMIP_label",
+          "BIOCLIMA_DS_reporting",
+          "BMLEH_Los1_label"
+        ]
+      },
+      "PIXEL_RES": {
+        "type": "string",
+        "title": "Grid resolution (km) [model spec]  [flat]",
+        "description": "Grid resolution (km) [model spec]  [flat] -- Grid resolution in km. 10 km is ~48-64k pixels over the EU, 5 km ~180k -- roughly four times the data and the runtime.  CHANGES WHAT IS ESTIMATED -- runs differing here are not comparable with runs at the default.",
+        "default": "10",
+        "enum": [
+          5,
+          10
+        ]
+      },
+      "PIXEL_INTERSECT": {
+        "type": "string",
+        "title": "Cell intersection [model spec]  [flat]",
+        "description": "Cell intersection [model spec]  [flat] -- Split each grid cell where it crosses this boundary, so a cell spanning two regions becomes two observations. NULL = native grid cells, no split. Changes the UNIT OF OBSERVATION, not just the labelling.  CHANGES WHAT IS ESTIMATED -- runs differing here are not comparable with runs at the default.",
+        "default": "NUTS3",
+        "enum": [
+          "NUTS3",
+          "NUTS2",
+          "CAPRI_NUTS",
+          "NULL"
+        ]
+      },
+      "DESIGN_PATH": {
+        "type": "string",
+        "title": "Design dump path  [gate, nested, project, recover]",
+        "description": "Design dump path  [gate, nested, project, recover] -- Path to pixel_model_inputs*.rds. 'auto' detects one on the drive or /data matching the chosen project/task.",
+        "default": "auto"
+      },
+      "GAMBLE_WORK_DIR": {
+        "type": "string",
+        "title": "Mounted drive  [count, flat, gate, nested, project, recover]",
+        "description": "Mounted drive  [count, flat, gate, nested, project, recover] -- The FUSE mount where outputs and results are symlinked so the platform collects them.",
+        "default": "/mnt/wdrv/gamble-core"
+      },
+      "EXTRA": {
+        "type": "string",
+        "title": "Overrides",
+        "description": "Overrides -- one-off settings as KEY=VALUE, comma separated, e.g. 'NITER=8000, USE_BART=TRUE'. Applied on top of the profile, and rejected if a key is not a declared knob. 'none' for no overrides.",
+        "default": "none"
+      }
+    }
+  }
+}

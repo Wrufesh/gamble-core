@@ -241,6 +241,11 @@ load_and_compile_json <- function(json_path) {
 
   raw_cfg <- jsonlite::fromJSON(json_path, simplifyVector = FALSE)
   
+  # If flat key-value JSON (e.g., direct routine submission from platform):
+  if (is.null(raw_cfg$execution) && is.null(raw_cfg$model) && any(c("TASK", "task") %in% names(raw_cfg))) {
+    return(stats::setNames(as.character(unlist(raw_cfg)), names(raw_cfg)))
+  }
+
   # Validate model-specific exclusivity
   arch <- raw_cfg$model$architecture
   if (identical(arch, "nested") && isTRUE(raw_cfg$model$flat$use_bart)) {
