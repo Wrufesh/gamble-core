@@ -89,7 +89,7 @@ for k in knobs:
                                      "comparable with runs at the default." if k["scope"] == "model" else ""),
          "default": str(k["default"])}
     if "enum" in k:
-        p["enum"] = k["enum"]
+        p["enum"] = [str(x) if isinstance(x, (int, float)) else x for x in k["enum"]]
     props[k["name"]] = p
 
 # The routine form renders `title` above a text input but NOT above a dropdown, so an enum field arrives
@@ -121,14 +121,15 @@ schema = {"root": {"type": "object",
 # -- so the only way to stop showing twenty-five irrelevant controls is to declare fewer.
 #
 #   lean (routine_config.schema.json)  what a routine normally needs: pick a task, pick a profile,
-#                                      and override the odd thing through EXTRA. A field is absent
-#                                      rather than set to a default, so it cannot quietly beat the
-#                                      profile it was supposed to inherit from.
+#                                      select resolution/intersect, and override the odd thing through EXTRA.
 #   full (routine_config.schema.full.json)  every knob, for when a one-off really wants the lot.
 LEAN = [
     "TASK",
     "PROFILE",
     "CLASSIFICATION",
+    "PIXEL_RES",
+    "PIXEL_INTERSECT",
+    "DESIGN_PATH",
     "VARIANT",
     "RE_BLOCK",
     "USE_BART",

@@ -531,6 +531,7 @@
       "label": "Design dump path",
       "desc": "Path to pixel_model_inputs*.rds. 'auto' detects one on the drive or /data matching the chosen project/task.",
       "tasks": [
+        "flat",
         "nested",
         "project",
         "recover",

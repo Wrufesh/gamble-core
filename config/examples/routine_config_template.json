@@ -1,0 +1,15 @@
+{
+  "TASK": "flat_design",
+  "PROFILE": "none",
+  "CLASSIFICATION": "GLOBIOM_subclass",
+  "PIXEL_RES": "10",
+  "PIXEL_INTERSECT": "NUTS3",
+  "DESIGN_PATH": "auto",
+  "USE_BART": "FALSE",
+  "SUBSAMPLE": "auto",
+  "NITER": "auto",
+  "N_CHAINS": "auto",
+  "RUN_ID": "auto",
+  "GAMBLE_WORK_DIR": "/mnt/wdrv/gamble-core",
+  "EXTRA": "none"
+}

@@ -232,8 +232,8 @@
         "description": "Grid resolution (km) [model spec]  [flat] -- Grid resolution in km. 10 km is ~48-64k pixels over the EU, 5 km ~180k -- roughly four times the data and the runtime.  CHANGES WHAT IS ESTIMATED -- runs differing here are not comparable with runs at the default.",
         "default": "10",
         "enum": [
-          5,
-          10
+          "5",
+          "10"
         ]
       },
       "PIXEL_INTERSECT": {
@@ -312,8 +312,8 @@
       },
       "DESIGN_PATH": {
         "type": "string",
-        "title": "Design dump path  [gate, nested, project, recover]",
-        "description": "Design dump path  [gate, nested, project, recover] -- Path to pixel_model_inputs*.rds. 'auto' detects one on the drive or /data matching the chosen project/task.",
+        "title": "Design dump path  [flat, gate, nested, project, recover]",
+        "description": "Design dump path  [flat, gate, nested, project, recover] -- Path to pixel_model_inputs*.rds. 'auto' detects one on the drive or /data matching the chosen project/task.",
         "default": "auto"
       },
       "PROJECT": {
