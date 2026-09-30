@@ -82,7 +82,7 @@ all_classes <- c("ACRP", "GRSL", "HCRP", "HEAS", "PAST",
 # =========================================================================
 
 message("Loading 1km → 5km grid mapping...")
-grid_mapping <- read_parquet(path_grid_mapping) |>
+grid_mapping <- read_parquet(path_grid_mapping, mmap = FALSE) |>
   mutate(across(contains("km"), as.integer)) |>
   select(INSPIRE_Europe_buffer_1kmID, EEA_1kmID, all_of(cell_id_cols)) |>
   distinct(INSPIRE_Europe_buffer_1kmID, .keep_all = TRUE) |>
@@ -96,7 +96,7 @@ grid_mapping <- read_parquet(path_grid_mapping) |>
   distinct()
 
 message("Loading 1km prior model inputs...")
-prior_inputs_1km <- read_parquet(path_prior_inputs) |>
+prior_inputs_1km <- read_parquet(path_prior_inputs, mmap = FALSE) |>
   mutate(
     EEA_1kmID = as.integer(EEA_1kmID),
     across(where(is.double), ~ ifelse(is.nan(.), NA_real_, .))

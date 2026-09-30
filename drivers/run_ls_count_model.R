@@ -371,11 +371,11 @@ is_accelerator <- function() nzchar(Sys.getenv("PROJECT_SLUG", ""))
 cat("  Loading grid mapping...\n")
 mapping_file <- get_latest_file(AUXDATA_DIR, "^one_kmID_master_mapping_.*\\.parquet$")
 if (is_accelerator()) {
-  cat("  [Platform] Setting memory_map = FALSE for mapping_file on accelerator mount\n")
+  cat("  [Platform] Setting mmap = FALSE for mapping_file on accelerator mount\n")
 }
 grid_map_raw <- arrow::read_parquet(
   file.path(AUXDATA_DIR, mapping_file),
-  memory_map = if (is_accelerator()) FALSE else TRUE
+  mmap = if (is_accelerator()) FALSE else TRUE
 ) %>% as.data.table()
 
 cat("  Loading LSU processed counts...\n")

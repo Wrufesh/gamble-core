@@ -666,11 +666,11 @@ climate_cols <- sub("_2000$", "", setdiff(climate_cols_raw_2000,
 
 cat(paste0("  Loading 1km -> ", PIXEL_RES, "km grid mapping...\n"))
 if (is_accelerator()) {
-  cat("  [Platform] Setting memory_map = FALSE for mapping_file on accelerator mount\n")
+  cat("  [Platform] Setting mmap = FALSE for mapping_file on accelerator mount\n")
 }
 grid_map_pixel <- arrow::read_parquet(
   file.path(AUXDATA_DIR, mapping_file),
-  memory_map = if (is_accelerator()) FALSE else TRUE
+  mmap = if (is_accelerator()) FALSE else TRUE
 ) %>% as.data.table()
 grid_map_pixel[, `:=`(
   INSPIRE_Europe_buffer_1kmID = as.integer(INSPIRE_Europe_buffer_1kmID),

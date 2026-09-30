@@ -161,7 +161,7 @@ setorderv(cc, top_cov[1], -1)
 GA <- tryCatch({ suppressMessages(library(arrow))
   gw <- Sys.getenv("GAMBLE_GRIDWORK_DIR", "../LAMASUS_gridwork/output")
   gf <- sort(list.files(gw, "^one_kmID_master_mapping_.*\\.parquet$", full.names = TRUE))
-  gg <- as.data.table(arrow::read_parquet(gf[length(gf)]))
+  gg <- as.data.table(arrow::read_parquet(gf[length(gf)], mmap = FALSE))
   # Take the full country list from the SAME keying the fit used. Reading GLOB_country while the fit
   # is keyed on CAPRI matches nothing, so every country would land in the pooled fallback and the
   # artifact would silently carry no country effects at all.

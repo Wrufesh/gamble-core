@@ -24,7 +24,7 @@ message(">>> Loading thematic mapping and base year maps...")
 mapping_thematic <- read.csv("../LAMASUS_downscaling/aux_files/LAMASUS_LUM_thematic_mapping.csv") %>% setDT()
 
 
-mapping_grid <- arrow::read_parquet(file.path(GRIDWORK_DIR, mapping_file)) %>% as.data.table()
+mapping_grid <- arrow::read_parquet(file.path(GRIDWORK_DIR, mapping_file), mmap = FALSE) %>% as.data.table()
 
 
 temp_map_1km <- readRDS(paste0(DS_DIR,"input/LUM_fit_with_energy_levels_and_new_FM_2018_EEA_1kmID.rds")) %>%
