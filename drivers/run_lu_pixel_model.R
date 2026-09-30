@@ -49,6 +49,14 @@ CASCADE_DATA <- Sys.getenv("GAMBLE_CASCADE_DATA", "../cascadinggamble-core/data"
 GRIDWORK_DIR <- Sys.getenv("GAMBLE_GRIDWORK_DIR", file.path(CASCADE_DATA, "02_intermediate"))
 AUXDATA_DIR  <- Sys.getenv("GAMBLE_AUXDATA_DIR",  file.path(CASCADE_DATA, "aux_files"))
 
+# =========================================================================
+# Platform detection: Accelerator (DeepOrigin / Celery) jobs provide PROJECT_SLUG
+# =========================================================================
+is_accelerator <- function() nzchar(Sys.getenv("PROJECT_SLUG", ""))
+if (is_accelerator()) {
+  cat(sprintf(">>> [Platform] Accelerator job detected (PROJECT_SLUG='%s')\n", Sys.getenv("PROJECT_SLUG")))
+}
+
 # Dynamically pick the latest mapping file
 mapping_file <- get_latest_file(AUXDATA_DIR, "^one_kmID_master_mapping_.*\\.parquet$")
 if (is.null(mapping_file)) {
@@ -657,7 +665,13 @@ climate_cols <- sub("_2000$", "", setdiff(climate_cols_raw_2000,
   c(paste0(c("GHM_HI", "GHM_TI", "GHM_Ovr"), "_2000"), "GDP_2000", "Pop_2000")))
 
 cat(paste0("  Loading 1km -> ", PIXEL_RES, "km grid mapping...\n"))
-grid_map_pixel <- arrow::read_parquet(file.path(AUXDATA_DIR, mapping_file)) %>% as.data.table()
+if (is_accelerator()) {
+  cat("  [Platform] Setting memory_map = FALSE for mapping_file on accelerator mount\n")
+}
+grid_map_pixel <- arrow::read_parquet(
+  file.path(AUXDATA_DIR, mapping_file),
+  memory_map = if (is_accelerator()) FALSE else TRUE
+) %>% as.data.table()
 grid_map_pixel[, `:=`(
   INSPIRE_Europe_buffer_1kmID = as.integer(INSPIRE_Europe_buffer_1kmID),
   EEA_1kmID = as.integer(EEA_1kmID),

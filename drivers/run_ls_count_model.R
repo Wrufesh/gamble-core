@@ -365,9 +365,18 @@ for (.col in names(prior_1km)[sapply(prior_1km, is.double)]) {
   set(prior_1km, j = .col, value = fifelse(is.nan(prior_1km[[.col]]), NA_real_, prior_1km[[.col]]))
 }
 
+# Platform detection: Accelerator (DeepOrigin / Celery) jobs provide PROJECT_SLUG
+is_accelerator <- function() nzchar(Sys.getenv("PROJECT_SLUG", ""))
+
 cat("  Loading grid mapping...\n")
 mapping_file <- get_latest_file(AUXDATA_DIR, "^one_kmID_master_mapping_.*\\.parquet$")
-grid_map_raw <- arrow::read_parquet(file.path(AUXDATA_DIR, mapping_file)) %>% as.data.table()
+if (is_accelerator()) {
+  cat("  [Platform] Setting memory_map = FALSE for mapping_file on accelerator mount\n")
+}
+grid_map_raw <- arrow::read_parquet(
+  file.path(AUXDATA_DIR, mapping_file),
+  memory_map = if (is_accelerator()) FALSE else TRUE
+) %>% as.data.table()
 
 cat("  Loading LSU processed counts...\n")
 lsu_data <- readRDS(file.path(GRIDWORK_DIR, "LSU_data_processed_with_POL_20250701.rds")) %>% as.data.table()
